@@ -10,6 +10,7 @@ from .models import (
     AppUserFormTemplate,
     AppUserFormVersion,
     TemplateVariable,
+    ProjectTemplateVariable,
 )
 
 
@@ -30,12 +31,22 @@ class TemplateVariableAdmin(admin.ModelAdmin):
     ordering = ("name",)
 
 
+class ProjectTemplateVariableInline(admin.TabularInline):
+    """Allows editing project-level template variables directly in ProjectAdmin."""
+
+    model = ProjectTemplateVariable
+    extra = 1
+    fields = ("template_variable", "value")
+    autocomplete_fields = ["template_variable"]
+
+
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
     list_display = ("name", "central_id", "central_server")
     search_fields = ("name", "central_id")
     list_filter = ("central_server",)
     filter_horizontal = ("template_variables",)
+    inlines = (ProjectTemplateVariableInline,)
 
 
 @admin.register(FormTemplate)

@@ -1,4 +1,5 @@
 import io
+import structlog
 
 import openpyxl
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -14,15 +15,18 @@ from apps.odk_publish.etl.template import (
 from ..models import AppUser, FormTemplateVersion
 
 
+logger = structlog.getLogger(__name__)
+
+
 def render_template_for_app_user(
     app_user: AppUser, template_version: FormTemplateVersion
 ) -> SimpleUploadedFile:
     """Create the next version of the app user's form."""
     workbook = openpyxl.load_workbook(filename=template_version.file)
     # Fill in the survey template variables
-    set_survey_template_variables(
-        sheet=workbook["survey"], variables=app_user.get_template_variables()
-    )
+    variables = app_user.get_template_variables()
+    logger.debug("App user variables", variables=variables)
+    set_survey_template_variables(sheet=workbook["survey"], variables=variables)
     # Update ODK entity references on both the survey and entities sheets
     entity_list_mapping = build_entity_list_mapping(workbook=workbook, app_user=app_user.name)
     update_entity_references(workbook=workbook, entity_list_mapping=entity_list_mapping)
