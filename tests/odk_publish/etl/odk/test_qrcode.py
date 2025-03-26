@@ -43,7 +43,7 @@ class TestCollectSettings:
         assert qr_code.getvalue()[:4] == b"\x89PNG"
         assert collect_settings == build_collect_settings(**kwargs)
     
-    def test_create_app_user_qrcode(self, app_user):
+    def test_create_app_user_with_admin_pw(self, app_user):
         """Test that the generated QR code includes the correct settings, including admin_pw."""
         kwargs = {
             "app_user": app_user,
