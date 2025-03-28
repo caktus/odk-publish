@@ -27,6 +27,7 @@ from .forms import (
     AppUserTemplateVariableFormSet,
     ProjectForm,
     ProjectTemplateVariableFormSet,
+    OrganizationForm,
 )
 from .import_export import AppUserResource
 from .models import FormTemplateVersion, FormTemplate, AppUser
@@ -39,14 +40,16 @@ logger = logging.getLogger(__name__)
 
 @login_required
 @transaction.atomic
-def server_sync(request: HttpRequest):
+def server_sync(request: HttpRequest, organization_slug):
     form = ProjectSyncForm(request=request, data=request.POST or None)
     if request.method == "POST" and form.is_valid():
         project = sync_central_project(
-            base_url=form.cleaned_data["server"], project_id=form.cleaned_data["project"]
+            base_url=form.cleaned_data["server"],
+            project_id=form.cleaned_data["project"],
+            organization=request.organization,
         )
         messages.add_message(request, messages.SUCCESS, "Project synced.")
-        return redirect("odk_publish:form-template-list", odk_project_pk=project.id)
+        return redirect("odk_publish:form-template-list", organization_slug, project.id)
     context = {
         "form": form,
         "breadcrumbs": Breadcrumbs.from_items(
@@ -64,7 +67,7 @@ def server_sync_projects(request: HttpRequest):
 
 
 @login_required
-def app_user_list(request: HttpRequest, odk_project_pk):
+def app_user_list(request: HttpRequest, organization_slug, odk_project_pk):
     app_users = request.odk_project.app_users.prefetch_related("app_user_forms__form_template")
     context = {
         "app_users": app_users,
@@ -77,13 +80,13 @@ def app_user_list(request: HttpRequest, odk_project_pk):
 
 
 @login_required
-def app_user_generate_qr_codes(request: HttpRequest, odk_project_pk):
+def app_user_generate_qr_codes(request: HttpRequest, organization_slug, odk_project_pk):
     generate_and_save_app_user_collect_qrcodes(project=request.odk_project)
-    return redirect("odk_publish:app-user-list", odk_project_pk=odk_project_pk)
+    return redirect("odk_publish:app-user-list", organization_slug, odk_project_pk)
 
 
 @login_required
-def form_template_list(request: HttpRequest, odk_project_pk):
+def form_template_list(request: HttpRequest, organization_slug, odk_project_pk):
     form_templates = request.odk_project.form_templates.annotate(
         app_user_count=models.Count("app_user_forms"),
     ).prefetch_related(
@@ -106,7 +109,9 @@ def form_template_list(request: HttpRequest, odk_project_pk):
 
 
 @login_required
-def form_template_detail(request: HttpRequest, odk_project_pk: int, form_template_id: int):
+def form_template_detail(
+    request: HttpRequest, organization_slug, odk_project_pk: int, form_template_id: int
+):
     form_template: FormTemplate = get_object_or_404(
         request.odk_project.form_templates.annotate(
             app_user_count=models.Count("app_user_forms"),
@@ -136,7 +141,9 @@ def form_template_detail(request: HttpRequest, odk_project_pk: int, form_templat
 
 
 @login_required
-def form_template_publish(request: HttpRequest, odk_project_pk: int, form_template_id: int):
+def form_template_publish(
+    request: HttpRequest, organization_slug, odk_project_pk: int, form_template_id: int
+):
     """Publish a FormTemplate to ODK Central."""
     form_template: FormTemplate = get_object_or_404(
         request.odk_project.form_templates, pk=form_template_id
@@ -168,7 +175,7 @@ def form_template_publish(request: HttpRequest, odk_project_pk: int, form_templa
 
 
 @login_required
-def app_user_export(request, odk_project_pk):
+def app_user_export(request, organization_slug, odk_project_pk):
     """Exports AppUsers to a CSV or Excel file.
 
     For each user in the current project, there will be "id", "name", and "central_id"
@@ -199,7 +206,7 @@ def app_user_export(request, odk_project_pk):
 
 
 @login_required
-def app_user_import(request, odk_project_pk):
+def app_user_import(request, organization_slug, odk_project_pk):
     """Imports AppUsers from a CSV or Excel file.
 
     The file is expected to have the same columns as a file exported using the
@@ -235,7 +242,7 @@ def app_user_import(request, odk_project_pk):
                     f"Import finished successfully, with {result.totals[RowResult.IMPORT_TYPE_NEW]} "
                     f"new and {result.totals[RowResult.IMPORT_TYPE_UPDATE]} updated app users.",
                 )
-                return redirect("odk_publish:app-user-list", odk_project_pk=odk_project_pk)
+                return redirect("odk_publish:app-user-list", organization_slug, odk_project_pk)
             # Save the import file data in a temporary file and show the confirm page
             import_format = form.cleaned_data["format"]
             tmp_storage = MediaStorage(
@@ -278,7 +285,7 @@ def websockets_server_health(request):
 
 
 @login_required
-def app_user_detail(request: HttpRequest, odk_project_pk, app_user_pk):
+def app_user_detail(request: HttpRequest, organization_slug, odk_project_pk, app_user_pk):
     """Detail page for an AppUser."""
     app_user = get_object_or_404(request.odk_project.app_users, pk=app_user_pk)
     if app_user.qr_code_data:
@@ -307,7 +314,9 @@ def app_user_detail(request: HttpRequest, odk_project_pk, app_user_pk):
 
 
 @login_required
-def change_form_template(request: HttpRequest, odk_project_pk, form_template_id=None):
+def change_form_template(
+    request: HttpRequest, organization_slug, odk_project_pk, form_template_id=None
+):
     """Add or edit a FormTemplate."""
     if form_template_id:
         # Editing a FormTemplate
@@ -322,7 +331,7 @@ def change_form_template(request: HttpRequest, odk_project_pk, form_template_id=
             request,
             f"Successfully {'edit' if form_template_id else 'add'}ed {form_template.title_base}.",
         )
-        return redirect("odk_publish:form-template-list", odk_project_pk)
+        return redirect("odk_publish:form-template-list", organization_slug, odk_project_pk)
     if form_template_id:
         crumbs = [
             (form_template.title_base, "form-template-detail", [form_template_id]),
@@ -350,7 +359,7 @@ def change_form_template(request: HttpRequest, odk_project_pk, form_template_id=
 
 
 @login_required
-def change_app_user(request: HttpRequest, odk_project_pk, app_user_id=None):
+def change_app_user(request: HttpRequest, organization_slug, odk_project_pk, app_user_id=None):
     """Add or edit an AppUser."""
     if app_user_id:
         # Editing an AppUser
@@ -367,7 +376,7 @@ def change_app_user(request: HttpRequest, odk_project_pk, app_user_id=None):
             request,
             f"Successfully {'edit' if app_user_id else 'add'}ed {app_user}.",
         )
-        return redirect("odk_publish:app-user-list", odk_project_pk)
+        return redirect("odk_publish:app-user-list", organization_slug, odk_project_pk)
     if app_user_id:
         crumbs = [
             (app_user.name, "app-user-detail", [app_user.pk]),
@@ -388,11 +397,13 @@ def change_app_user(request: HttpRequest, odk_project_pk, app_user_id=None):
 
 
 @login_required
-def edit_project(request, odk_project_pk):
+def edit_project(request, organization_slug, odk_project_pk):
     """Edit a Project."""
     form = ProjectForm(request.POST or None, instance=request.odk_project)
     variables_formset = ProjectTemplateVariableFormSet(
-        request.POST or None, instance=request.odk_project
+        request.POST or None,
+        instance=request.odk_project,
+        form_kwargs={"valid_template_variables": request.organization.template_variables.all()},
     )
     if request.method == "POST" and all([form.is_valid(), variables_formset.is_valid()]):
         form.save()
@@ -401,7 +412,7 @@ def edit_project(request, odk_project_pk):
             request,
             f"Successfully edited {request.odk_project}.",
         )
-        return redirect("odk_publish:form-template-list", request.odk_project.id)
+        return redirect("odk_publish:form-template-list", organization_slug, odk_project_pk)
     context = {
         "form": form,
         "variables_formset": variables_formset,
@@ -411,3 +422,20 @@ def edit_project(request, odk_project_pk):
         ),
     }
     return render(request, "odk_publish/change_project.html", context)
+
+
+@login_required
+def create_organization(request: HttpRequest):
+    form = OrganizationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        organization = form.save()
+        messages.success(request, f"Successfully created {organization}.")
+        return redirect("odk_publish:organization-home", organization.slug)
+    context = {
+        "form": form,
+        "breadcrumbs": Breadcrumbs.from_items(
+            request=request,
+            items=[("Create an organization", "create-organization")],
+        ),
+    }
+    return render(request, "odk_publish/create_organization.html", context)

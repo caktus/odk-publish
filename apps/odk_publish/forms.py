@@ -18,7 +18,14 @@ from apps.patterns.widgets import (
 
 from .etl.odk.client import ODKPublishClient
 from .http import HttpRequest
-from .models import AppUser, AppUserTemplateVariable, FormTemplate, Project, ProjectTemplateVariable
+from .models import (
+    AppUser,
+    AppUserTemplateVariable,
+    FormTemplate,
+    Organization,
+    Project,
+    ProjectTemplateVariable,
+)
 
 logger = structlog.getLogger(__name__)
 
@@ -290,6 +297,13 @@ class ProjectForm(PlatformFormMixin, forms.ModelForm):
             "template_variables": CheckboxSelectMultiple,
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Limit template variables to those linked to the project's organization
+        self.fields[
+            "template_variables"
+        ].queryset = self.instance.organization.template_variables.all()
+
 
 class ProjectTemplateVariableForm(PlatformFormMixin, forms.ModelForm):
     """A form for adding or editing a ProjectTemplateVariable."""
@@ -302,8 +316,24 @@ class ProjectTemplateVariableForm(PlatformFormMixin, forms.ModelForm):
             "value": TextInput,
         }
 
+    def __init__(self, *args, **kwargs):
+        valid_template_variables = kwargs.pop("valid_template_variables", None)
+        super().__init__(*args, **kwargs)
+        if valid_template_variables is not None:
+            self.fields["template_variable"].queryset = valid_template_variables
+
 
 ProjectTemplateVariableFormSet = forms.models.inlineformset_factory(
     Project, ProjectTemplateVariable, form=ProjectTemplateVariableForm, extra=0
 )
 ProjectTemplateVariableFormSet.deletion_widget = CheckboxInput
+
+
+class OrganizationForm(PlatformFormMixin, forms.ModelForm):
+    class Meta:
+        model = Organization
+        fields = ["name", "slug"]
+        widgets = {
+            "name": TextInput,
+            "slug": TextInput,
+        }
