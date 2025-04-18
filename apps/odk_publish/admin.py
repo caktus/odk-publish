@@ -5,6 +5,7 @@ from django.contrib import admin
 from django import forms
 from invitations.admin import InvitationAdmin
 
+from .etl.load import generate_and_save_app_user_collect_qrcodes
 from .models import (
     CentralServer,
     Project,
@@ -54,11 +55,17 @@ class ProjectTemplateVariableInline(admin.TabularInline):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("name", "central_id", "central_server", "organization")
+    list_display = ("name", "central_id", "central_server", "organization", "app_language")
     search_fields = ("name", "central_id")
     list_filter = ("central_server",)
     filter_horizontal = ("template_variables",)
     inlines = (ProjectAttachmentInline, ProjectTemplateVariableInline)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Regenerate app user QR codes if the app_language has changed
+        if change and "app_language" in form.changed_data:
+            generate_and_save_app_user_collect_qrcodes(obj)
 
 
 class FormTemplateForm(forms.ModelForm):
